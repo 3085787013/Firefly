@@ -1,260 +1,194 @@
 ﻿<!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-  <title>FIREFLY</title>
-  <script src="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-M/nipplejs/0.10.1/nipplejs.min.js"></script>
-  <style>
-    html,
-    body {
-      margin: 0;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-      font-family: Arial;
-      color: #0f0
-    }
-
-    canvas {
-      background: #000;
-      display: block;
-      margin: 0 auto
-    }
-
-    #ui {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      font-size: 18px;
-      text-shadow: 0 0 3px #0f0
-    }
-
-    #over {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, .8);
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: 22px
-    }
-
-    button {
-      background: #0f0;
-      border: none;
-      padding: 8px 16px;
-      margin-top: 12px;
-      cursor: pointer;
-      color: #000;
-      font-weight: 1000
-    }
-  </style>
-
-  <!-- 防止手机休眠 -->
-  <script>
-    if ('wakeLock' in navigator) {
-      navigator.wakeLock.request('screen').catch(() => { });
-    }
-  </script>
-
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<title>FIREFLY</title>
+<script src="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-M/nipplejs/0.10.1/nipplejs.min.js"></script>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:Arial;color:#0f0}
+canvas{background:#000;display:block;margin:0 auto}
+#ui{position:fixed;top:10px;left:10px;font-size:18px;text-shadow:0 0 3px #0f0}
+#over{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;flex-direction:column;align-items:center;justify-content:center;font-size:22px}
+button{background:#0f0;border:none;padding:8px 16px;margin-top:12px;cursor:pointer;color:#000;font-weight:1000}
+</style>
 </head>
 
-
 <body>
-  <canvas id="cvs"></canvas>
-  <div id="ui">
-    <div>Score: <span id="score">0</span></div>
-    <div>Life : <span id="life">1</span></div>
-  </div>
-  <div id="over">
-    <h2>GAME OVER</h2>
-    <div>你的得分: <span id="final">0</span></div>
-    <button onclick="restart()">你怎么这么菜,快点再来一把</button>
-  </div>
+<canvas id="cvs"></canvas>
+<div id="ui">
+  <div>Score: <span id="score">0</span></div>
+  <div>Life : <span id="life">1</span></div>
+</div>
+<div id="over">
+  <h2>GAME OVER</h2>
+  <div>你的得分: <span id="final">0</span></div>
+  <button onclick="restart()">你怎么这么菜，赶快再来一把</button>
+</div>
 
-  <script>
-    /* ==================== 基础 ==================== */
-    const cvs = document.getElementById('cvs');
-    const ctx = cvs.getContext('2d');
-    resize(); window.addEventListener('resize', resize);
-    function resize() { cvs.width = innerWidth; cvs.height = innerHeight; }
+<script>
+/* ===== 基础 ===== */
+const cvs = document.getElementById('cvs');
+const ctx = cvs.getContext('2d');
+resize(); window.addEventListener('resize', resize);
+function resize() { cvs.width = innerWidth; cvs.height = innerHeight; }
 
-    /* ==================== 星空背景 ==================== */
-    const stars = Array.from({ length: 300 }, () => ({
-      x: Math.random() * cvs.width, y: Math.random() * cvs.height,
-      r: Math.random() * 1.5, v: Math.random() * .8 + .2
-    }));
-    function drawStars() {
-      ctx.fillStyle = '#fff';
-      stars.forEach(s => {
-        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
-        s.y += s.v; if (s.y > cvs.height) { s.y = 0; s.x = Math.random() * cvs.width; }
-      });
+/* ===== 星空 ===== */
+const stars = Array.from({length:300}, ()=> ({
+  x:Math.random()*cvs.width, y:Math.random()*cvs.height,
+  r:Math.random()*1.5, v:Math.random()*.8+.2
+}));
+function drawStars() {
+  ctx.fillStyle='#fff';
+  stars.forEach(s=>{
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+    s.y+=s.v; if(s.y>cvs.height){s.y=0; s.x=Math.random()*cvs.width;}
+  });
+}
+
+/* ===== 资源 ===== */
+const rocketImg = new Image();
+rocketImg.src = 'https://s21.ax1x.com/2025/08/22/pVDrXp8.jpg';
+
+const markImg = new Image();
+markImg.src = 'https://s21.ax1x.com/2025/08/22/pVDrLff.jpg';
+
+/* ===== 状态变量 ===== */
+const rocket   = {x:cvs.width/2, y:cvs.height-100, w:150, h:150, speed:5};
+const mark     = {w:600, h:400, x:50, y:50, vx:1.2, vy:0.8, alpha:0.25};
+const rocks    = [];
+const lasers   = [];
+const keys     = {};
+const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+let rockTimer  = 0;
+let score      = 0;
+let life       = 1;
+let over       = false;
+let rocketVX   = 0;
+let rocketVY   = 0;
+let lastFire   = 0;
+const fireRate = 250;
+
+/* ===== 类 ===== */
+class Rock {
+  constructor(){
+    this.x=Math.random()*(cvs.width-40); this.y=-40;
+    this.r=Math.random()*15+15; this.vy=Math.random()*2+2;
+    this.vx=(Math.random()-.5)*2; this.hp=Math.floor(this.r/10);
+  }
+  update(){this.y+=this.vy; this.x+=this.vx; if(this.x<0||this.x>cvs.width) this.vx*=-1;}
+  draw(){ctx.fillStyle='#f55'; ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fill();}
+}
+class Laser {
+  constructor(x,y){this.x=x; this.y=y; this.w=4; this.h=15; this.v=10;}
+  update(){this.y-=this.v;}
+  draw(){ctx.fillStyle='#5f5'; ctx.fillRect(this.x,this.y,this.w,this.h);}
+}
+
+/* ===== 碰撞 ===== */
+function circleRect(cx,cy,cr,rx,ry,rw,rh){
+  const dx=Math.abs(cx-rx-rw/2), dy=Math.abs(cy-ry-rh/2);
+  if(dx>(rw/2+cr)||dy>(rh/2+cr))return false;
+  if(dx<=rw/2||dy<=rh/2)return true;
+  return (dx-rw/2)**2+(dy-rh/2)**2<=cr**2;
+}
+
+/* ===== 输入 ===== */
+window.addEventListener('keydown',e=>keys[e.code]=true);
+window.addEventListener('keyup',e=>keys[e.code]=false);
+
+let joystick;
+if(isMobile){
+  joystick=nipplejs.create({zone:document.body,mode:'static',position:{left:'15%',bottom:'15%'},size:120,color:'rgba(0,255,0,.5)'});
+  joystick.on('move',(_,d)=>{rocketVX=d.vector.x*rocket.speed;rocketVY=d.vector.y*rocket.speed});
+  joystick.on('end',()=>{rocketVX=0;rocketVY=0});
+}
+
+function handleInput(){
+  /* 键盘 */
+  if(!isMobile){
+    rocketVX=0;rocketVY=0;
+    if(keys['ArrowLeft'])rocketVX=-rocket.speed;
+    if(keys['ArrowRight'])rocketVX=rocket.speed;
+    if(keys['ArrowUp'])rocketVY=-rocket.speed;
+    if(keys['ArrowDown'])rocketVY=rocket.speed;
+  }
+  /* 自动开火 */
+  const now=Date.now();
+  if(now-lastFire>fireRate){
+    lasers.push(new Laser(rocket.x+rocket.w/2-2,rocket.y));
+    lastFire=now;
+  }
+  /* 边界 */
+  rocket.x=Math.max(0,Math.min(cvs.width-rocket.w,rocket.x+rocketVX));
+  rocket.y=Math.max(0,Math.min(cvs.height-rocket.h,rocket.y+rocketVY));
+}
+
+/* ===== 主循环 ===== */
+function gameLoop(){
+  if(over) return;
+  handleInput();            // ✅ 正确位置：先处理输入
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  drawStars();
+
+  /* 陨石 */
+  rockTimer++;
+  if(rockTimer>50){rocks.push(new Rock());rockTimer=0;}
+  for(let i=rocks.length-1;i>=0;i--){
+    const r=rocks[i]; r.update(); r.draw();
+    if(circleRect(r.x,r.y,r.r,rocket.x,rocket.y,rocket.w,rocket.h)){
+      life--; rocks.splice(i,1);
+      if(life<=0){gameOver();return;}
     }
+    if(r.y-r.r>cvs.height)rocks.splice(i,1);
+  }
 
-    /* ==================== 水印图片 ==================== */
-    const markImg = new Image();
-    markImg.src = 'https://s21.ax1x.com/2025/08/22/pVDrLff.jpg';
-    const mark = {
-      w: 600, h: 400,           // 水印显示尺寸
-      x: 50, y: 50,            // 初始位置
-      vx: 1.2, vy: 0.8,        // 每帧移动像素
-      alpha: 0.25               // 透明度
-    };
-
-    /* ==================== 玩家火箭 ==================== */
-    const rocketImg = new Image();
-    rocketImg.src = 'https://s21.ax1x.com/2025/08/22/pVDrXp8.jpg'; // 你的火箭照片
-    const rocket = { x: cvs.width / 2, y: cvs.height - 100, w: 150, h: 150, speed: 5 };
-
-    /* ==================== 双端设备 ==================== */
-    const keys = {};
-    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-
-    /* ==================== 陨石 & 激光 ==================== */
-    const rocks = [], lasers = [];
-    let rockTimer = 0, score = 0, life = 1, over = false;
-
-    class Rock {
-      constructor() {
-        this.x = Math.random() * (cvs.width - 40); this.y = -40;
-        this.r = Math.random() * 15 + 15; this.vy = Math.random() * 2 + 2;
-        this.vx = (Math.random() - .5) * 2; this.hp = Math.floor(this.r / 10);
+  /* 激光 */
+  for(let i=lasers.length-1;i>=0;i--){
+    const l=lasers[i]; l.update(); l.draw();
+    if(l.y+l.h<0){lasers.splice(i,1);continue;}
+    for(let j=rocks.length-1;j>=0;j--){
+      const r=rocks[j];
+      if(Math.hypot(l.x-l.w/2-r.x,l.y-r.y)<r.r){
+        r.hp--; lasers.splice(i,1);
+        if(r.hp<=0){score+=Math.floor(r.r);rocks.splice(j,1);}
       }
-      update() { this.y += this.vy; this.x += this.vx; if (this.x < 0 || this.x > cvs.width) this.vx *= -1; }
-      draw() { ctx.fillStyle = '#f55'; ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fill(); }
     }
+  }
 
-    class Laser {
-      constructor(x, y) { this.x = x; this.y = y; this.w = 4; this.h = 15; this.v = 10; }
-      update() { this.y -= this.v; }
-      draw() { ctx.fillStyle = '#5f5'; ctx.fillRect(this.x, this.y, this.w, this.h); }
-    }
+  /* 水印 */
+  mark.x+=mark.vx; mark.y+=mark.vy;
+  if(mark.x<=0||mark.x+mark.w>=cvs.width)mark.vx*=-1;
+  if(mark.y<=0||mark.y+mark.h>=cvs.height)mark.vy*=-1;
+  ctx.globalAlpha=mark.alpha;
+  ctx.drawImage(markImg,mark.x,mark.y,mark.w,mark.h);
+  ctx.globalAlpha=1;
 
-    /* ==================== 碰撞检测 ==================== */
-    function circleRect(cx, cy, cr, rx, ry, rw, rh) {
-      const dx = Math.abs(cx - rx - rw / 2), dy = Math.abs(cy - ry - rh / 2);
-      if (dx > (rw / 2 + cr) || dy > (rh / 2 + cr)) return false;
-      if (dx <= rw / 2 || dy <= rh / 2) return true;
-      return (dx - rw / 2) ** 2 + (dy - rh / 2) ** 2 <= cr ** 2;
-    }
+  /* UI */
+  document.getElementById('score').textContent=score;
+  document.getElementById('life').textContent=life;
+  requestAnimationFrame(gameLoop);
+}
 
-    /* ==================== 主循环 ==================== */
-    function gameLoop() {
-      if (over) return;
-      ctx.clearRect(0, 0, cvs.width, cvs.height);
-      drawStars();
+/* ===== 结束/重启 ===== */
+function gameOver(){
+  over=true;
+  document.getElementById('final').textContent=score;
+  document.getElementById('over').style.display='flex';
+}
+function restart(){
+  score=0; life=1; over=false;
+  rocks.length=lasers.length=0; rockTimer=0;
+  rocket.x=cvs.width/2; rocket.y=cvs.height-100;
+  mark.x=50; mark.y=50;
+  document.getElementById('over').style.display='none';
+  gameLoop();
+}
 
-      /* 陨石生成&更新 */
-      rockTimer++;
-      if (rockTimer > 50) { rocks.push(new Rock()); rockTimer = 0; }
-      for (let i = rocks.length - 1; i >= 0; i--) {
-        const r = rocks[i]; r.update(); r.draw();
-        if (circleRect(r.x, r.y, r.r, rocket.x, rocket.y, rocket.w, rocket.h)) {
-          life--; rocks.splice(i, 1);
-          if (life <= 0) { gameOver(); return; }
-        }
-        if (r.y - r.r > cvs.height) rocks.splice(i, 1);
-      }
-
-      /* 激光更新 */
-      for (let i = lasers.length - 1; i >= 0; i--) {
-        const l = lasers[i]; l.update(); l.draw();
-        if (l.y + l.h < 0) { lasers.splice(i, 1); continue; }
-        for (let j = rocks.length - 1; j >= 0; j--) {
-          const r = rocks[j];
-          if (Math.hypot(l.x - l.w / 2 - r.x, l.y - r.y) < r.r) {
-            r.hp--; lasers.splice(i, 1);
-            if (r.hp <= 0) { score += Math.floor(r.r); rocks.splice(j, 1); }
-            break;
-          }
-        }
-      }
-
-      /* 画火箭 */
-      ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.w, rocket.h);
-
-      /* 画水印（在最上层，半透明）*/
-      mark.x += mark.vx; mark.y += mark.vy;
-      if (mark.x <= 0 || mark.x + mark.w >= cvs.width) mark.vx *= -1;
-      if (mark.y <= 0 || mark.y + mark.h >= cvs.height) mark.vy *= -1;
-      ctx.globalAlpha = mark.alpha;
-      ctx.drawImage(markImg, mark.x, mark.y, mark.w, mark.h);
-      ctx.globalAlpha = 1;
-
-    
-      /* UI */
-      document.getElementById('score').textContent = score;
-      document.getElementById('life').textContent = life;
-      requestAnimationFrame(gameLoop);
-    }
-
-    /* ================== 双端输入兼容 ================== */
-    /* ---------- 电脑：键盘 ---------- */
-    window.addEventListener('keydown', e => keys[e.code] = true);
-    window.addEventListener('keyup', e => keys[e.code] = false);
-
-    /* ---------- 手机：摇杆 ---------- */
-    let joystick;
-    if (isMobile) {
-      joystick = nipplejs.create({
-        zone: document.body,
-        mode: 'static',
-        position: { left: '15%', bottom: '15%' },
-        size: 120,
-        color: 'rgba(0,255,0,0.5)'
-      });
-      joystick.on('move', (e, d) => {
-        rocketVX = d.vector.x * rocket.speed;
-        rocketVY = d.vector.y * rocket.speed;
-      });
-      joystick.on('end', () => { rocketVX = 0; rocketVY = 0; });
-    }
-
-    /* ---------- 唯一 handleInput ---------- */
-    function handleInput() {
-      /* 键盘 */
-      if (!isMobile) {
-        rocketVX = 0; rocketVY = 0;
-        if (keys['ArrowLeft']) rocketVX = -rocket.speed;
-        if (keys['ArrowRight']) rocketVX = rocket.speed;
-        if (keys['ArrowUp']) rocketVY = -rocket.speed;
-        if (keys['ArrowDown']) rocketVY = rocket.speed;
-      }
-
-      /* 自动开火 */
-      const now = Date.now();
-      if (now - lastFire > fireRate) { shoot(); lastFire = now; }
-
-      /* 更新坐标 */
-      rocket.x += rocketVX;
-      rocket.y += rocketVY;
-      rocket.x = Math.max(0, Math.min(cvs.width - rocket.w, rocket.x));
-      rocket.y = Math.max(0, Math.min(cvs.height - rocket.h, rocket.y));
-    }
-    /* ==================== 结束/重启 ==================== */
-    function gameOver() {
-      over = true;
-      document.getElementById('final').textContent = score;
-      document.getElementById('over').style.display = 'flex';
-    }
-    function restart() {
-      score = 0; life = 1; over = false;
-      rocks.length = lasers.length = 0; rockTimer = 0;
-      rocket.x = cvs.width / 2; rocket.y = cvs.height - 100;
-      mark.x = 50; mark.y = 50;          // 重置水印位置
-      document.getElementById('over').style.display = 'none';
-      gameLoop();
-    }
-
-    /* ==================== 启动 ==================== */
-    let loaded = 0;
-    function tryStart() { if (++loaded === 2) gameLoop(); }
-    rocketImg.onload = markImg.onload = tryStart;
-  </script>
+/* ===== 启动 ===== */
+let loaded=0;
+function tryStart(){if(++loaded===2)gameLoop();}
+rocketImg.onload=markImg.onload=tryStart;
+</script>
 </body>
-
 </html>
