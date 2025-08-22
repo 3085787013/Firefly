@@ -3,8 +3,9 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
   <title>FIREFLY</title>
+  <script src="https://lf26-cdn-tos.bytecdntp.com/cdn/expire-1-M/nipplejs/0.10.1/nipplejs.min.js"></script>
   <style>
     html,
     body {
@@ -48,10 +49,19 @@
       margin-top: 12px;
       cursor: pointer;
       color: #000;
-      font-weight: 700
+      font-weight: 1000
     }
   </style>
+
+  <!-- 防止手机休眠 -->
+  <script>
+    if ('wakeLock' in navigator) {
+      navigator.wakeLock.request('screen').catch(() => { });
+    }
+  </script>
+
 </head>
+
 
 <body>
   <canvas id="cvs"></canvas>
@@ -61,7 +71,7 @@
   </div>
   <div id="over">
     <h2>GAME OVER</h2>
-    <div>Your Score: <span id="final">0</span></div>
+    <div>你的得分: <span id="final">0</span></div>
     <button onclick="restart()">你怎么这么菜,快点再来一把</button>
   </div>
 
@@ -99,6 +109,10 @@
     const rocketImg = new Image();
     rocketImg.src = 'https://s21.ax1x.com/2025/08/22/pVDrXp8.jpg'; // 你的火箭照片
     const rocket = { x: cvs.width / 2, y: cvs.height - 100, w: 150, h: 150, speed: 5 };
+
+    /* ==================== 双端设备 ==================== */
+    const keys = {};
+    const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
 
     /* ==================== 陨石 & 激光 ==================== */
     const rocks = [], lasers = [];
@@ -171,25 +185,56 @@
       ctx.drawImage(markImg, mark.x, mark.y, mark.w, mark.h);
       ctx.globalAlpha = 1;
 
+    
       /* UI */
       document.getElementById('score').textContent = score;
       document.getElementById('life').textContent = life;
       requestAnimationFrame(gameLoop);
     }
 
-    /* ==================== 输入控制 ==================== */
-    const keys = {};
-    window.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') shoot(); });
+    /* ================== 双端输入兼容 ================== */
+    /* ---------- 电脑：键盘 ---------- */
+    window.addEventListener('keydown', e => keys[e.code] = true);
     window.addEventListener('keyup', e => keys[e.code] = false);
-    function handleInput() {
-      if (keys['ArrowLeft'] && rocket.x > 0) rocket.x -= rocket.speed;
-      if (keys['ArrowRight'] && rocket.x + rocket.w < cvs.width) rocket.x += rocket.speed;
-      if (keys['ArrowUp'] && rocket.y > 0) rocket.y -= rocket.speed;
-      if (keys['ArrowDown'] && rocket.y + rocket.h < cvs.height) rocket.y += rocket.speed;
-    }
-    setInterval(handleInput, 16);
-    function shoot() { lasers.push(new Laser(rocket.x + rocket.w / 2 - 2, rocket.y)); }
 
+    /* ---------- 手机：摇杆 ---------- */
+    let joystick;
+    if (isMobile) {
+      joystick = nipplejs.create({
+        zone: document.body,
+        mode: 'static',
+        position: { left: '15%', bottom: '15%' },
+        size: 120,
+        color: 'rgba(0,255,0,0.5)'
+      });
+      joystick.on('move', (e, d) => {
+        rocketVX = d.vector.x * rocket.speed;
+        rocketVY = d.vector.y * rocket.speed;
+      });
+      joystick.on('end', () => { rocketVX = 0; rocketVY = 0; });
+    }
+
+    /* ---------- 唯一 handleInput ---------- */
+    function handleInput() {
+      /* 键盘 */
+      if (!isMobile) {
+        rocketVX = 0; rocketVY = 0;
+        if (keys['ArrowLeft']) rocketVX = -rocket.speed;
+        if (keys['ArrowRight']) rocketVX = rocket.speed;
+        if (keys['ArrowUp']) rocketVY = -rocket.speed;
+        if (keys['ArrowDown']) rocketVY = rocket.speed;
+      }
+
+      /* 自动开火 */
+      const now = Date.now();
+      if (now - lastFire > fireRate) { shoot(); lastFire = now; }
+
+      /* 更新坐标 */
+      rocket.x += rocketVX;
+      rocket.y += rocketVY;
+      rocket.x = Math.max(0, Math.min(cvs.width - rocket.w, rocket.x));
+      rocket.y = Math.max(0, Math.min(cvs.height - rocket.h, rocket.y));
+    }
     /* ==================== 结束/重启 ==================== */
     function gameOver() {
       over = true;
@@ -212,9 +257,4 @@
   </script>
 </body>
 
-
 </html>
-
-
-
-
