@@ -1,0 +1,215 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIREFLY</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: Arial;
+      color: #0f0
+    }
+
+    canvas {
+      background: #000;
+      display: block;
+      margin: 0 auto
+    }
+
+    #ui {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+      text-shadow: 0 0 3px #0f0
+    }
+
+    #over {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .8);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px
+    }
+
+    button {
+      background: #0f0;
+      border: none;
+      padding: 8px 16px;
+      margin-top: 12px;
+      cursor: pointer;
+      color: #000;
+      font-weight: 700
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="cvs"></canvas>
+  <div id="ui">
+    <div>Score: <span id="score">0</span></div>
+    <div>Life : <span id="life">3</span></div>
+  </div>
+  <div id="over">
+    <h2>GAME OVER</h2>
+    <div>Your Score: <span id="final">0</span></div>
+    <button onclick="restart()">你怎么这么菜,快点再来一把</button>
+  </div>
+
+  <script>
+    /* ==================== 基础 ==================== */
+    const cvs = document.getElementById('cvs');
+    const ctx = cvs.getContext('2d');
+    resize(); window.addEventListener('resize', resize);
+    function resize() { cvs.width = innerWidth; cvs.height = innerHeight; }
+
+    /* ==================== 星空背景 ==================== */
+    const stars = Array.from({ length: 300 }, () => ({
+      x: Math.random() * cvs.width, y: Math.random() * cvs.height,
+      r: Math.random() * 1.5, v: Math.random() * .8 + .2
+    }));
+    function drawStars() {
+      ctx.fillStyle = '#fff';
+      stars.forEach(s => {
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+        s.y += s.v; if (s.y > cvs.height) { s.y = 0; s.x = Math.random() * cvs.width; }
+      });
+    }
+
+    /* ==================== 水印图片 ==================== */
+    const markImg = new Image();
+    markImg.src = 'Firefly水印.jpg';
+    const mark = {
+      w: 600, h: 400,           // 水印显示尺寸
+      x: 50, y: 50,            // 初始位置
+      vx: 1.2, vy: 0.8,        // 每帧移动像素
+      alpha: 0.25               // 透明度
+    };
+
+    /* ==================== 玩家火箭 ==================== */
+    const rocketImg = new Image();
+    rocketImg.src = 'Firefly.jpg'; // 你的火箭照片
+    const rocket = { x: cvs.width / 2, y: cvs.height - 100, w: 150, h: 150, speed: 5 };
+
+    /* ==================== 陨石 & 激光 ==================== */
+    const rocks = [], lasers = [];
+    let rockTimer = 0, score = 0, life = 3, over = false;
+
+    class Rock {
+      constructor() {
+        this.x = Math.random() * (cvs.width - 40); this.y = -40;
+        this.r = Math.random() * 15 + 15; this.vy = Math.random() * 2 + 2;
+        this.vx = (Math.random() - .5) * 2; this.hp = Math.floor(this.r / 10);
+      }
+      update() { this.y += this.vy; this.x += this.vx; if (this.x < 0 || this.x > cvs.width) this.vx *= -1; }
+      draw() { ctx.fillStyle = '#f55'; ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fill(); }
+    }
+
+    class Laser {
+      constructor(x, y) { this.x = x; this.y = y; this.w = 4; this.h = 15; this.v = 10; }
+      update() { this.y -= this.v; }
+      draw() { ctx.fillStyle = '#5f5'; ctx.fillRect(this.x, this.y, this.w, this.h); }
+    }
+
+    /* ==================== 碰撞检测 ==================== */
+    function circleRect(cx, cy, cr, rx, ry, rw, rh) {
+      const dx = Math.abs(cx - rx - rw / 2), dy = Math.abs(cy - ry - rh / 2);
+      if (dx > (rw / 2 + cr) || dy > (rh / 2 + cr)) return false;
+      if (dx <= rw / 2 || dy <= rh / 2) return true;
+      return (dx - rw / 2) ** 2 + (dy - rh / 2) ** 2 <= cr ** 2;
+    }
+
+    /* ==================== 主循环 ==================== */
+    function gameLoop() {
+      if (over) return;
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      drawStars();
+
+      /* 陨石生成&更新 */
+      rockTimer++;
+      if (rockTimer > 50) { rocks.push(new Rock()); rockTimer = 0; }
+      for (let i = rocks.length - 1; i >= 0; i--) {
+        const r = rocks[i]; r.update(); r.draw();
+        if (circleRect(r.x, r.y, r.r, rocket.x, rocket.y, rocket.w, rocket.h)) {
+          life--; rocks.splice(i, 1);
+          if (life <= 0) { gameOver(); return; }
+        }
+        if (r.y - r.r > cvs.height) rocks.splice(i, 1);
+      }
+
+      /* 激光更新 */
+      for (let i = lasers.length - 1; i >= 0; i--) {
+        const l = lasers[i]; l.update(); l.draw();
+        if (l.y + l.h < 0) { lasers.splice(i, 1); continue; }
+        for (let j = rocks.length - 1; j >= 0; j--) {
+          const r = rocks[j];
+          if (Math.hypot(l.x - l.w / 2 - r.x, l.y - r.y) < r.r) {
+            r.hp--; lasers.splice(i, 1);
+            if (r.hp <= 0) { score += Math.floor(r.r); rocks.splice(j, 1); }
+            break;
+          }
+        }
+      }
+
+      /* 画火箭 */
+      ctx.drawImage(rocketImg, rocket.x, rocket.y, rocket.w, rocket.h);
+
+      /* 画水印（在最上层，半透明）*/
+      mark.x += mark.vx; mark.y += mark.vy;
+      if (mark.x <= 0 || mark.x + mark.w >= cvs.width) mark.vx *= -1;
+      if (mark.y <= 0 || mark.y + mark.h >= cvs.height) mark.vy *= -1;
+      ctx.globalAlpha = mark.alpha;
+      ctx.drawImage(markImg, mark.x, mark.y, mark.w, mark.h);
+      ctx.globalAlpha = 1;
+
+      /* UI */
+      document.getElementById('score').textContent = score;
+      document.getElementById('life').textContent = life;
+      requestAnimationFrame(gameLoop);
+    }
+
+    /* ==================== 输入控制 ==================== */
+    const keys = {};
+    window.addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') shoot(); });
+    window.addEventListener('keyup', e => keys[e.code] = false);
+    function handleInput() {
+      if (keys['ArrowLeft'] && rocket.x > 0) rocket.x -= rocket.speed;
+      if (keys['ArrowRight'] && rocket.x + rocket.w < cvs.width) rocket.x += rocket.speed;
+      if (keys['ArrowUp'] && rocket.y > 0) rocket.y -= rocket.speed;
+      if (keys['ArrowDown'] && rocket.y + rocket.h < cvs.height) rocket.y += rocket.speed;
+    }
+    setInterval(handleInput, 16);
+    function shoot() { lasers.push(new Laser(rocket.x + rocket.w / 2 - 2, rocket.y)); }
+
+    /* ==================== 结束/重启 ==================== */
+    function gameOver() {
+      over = true;
+      document.getElementById('final').textContent = score;
+      document.getElementById('over').style.display = 'flex';
+    }
+    function restart() {
+      score = 0; life = 3; over = false;
+      rocks.length = lasers.length = 0; rockTimer = 0;
+      rocket.x = cvs.width / 2; rocket.y = cvs.height - 100;
+      mark.x = 50; mark.y = 50;          // 重置水印位置
+      document.getElementById('over').style.display = 'none';
+      gameLoop();
+    }
+
+    /* ==================== 启动 ==================== */
+    let loaded = 0;
+    function tryStart() { if (++loaded === 2) gameLoop(); }
+    rocketImg.onload = markImg.onload = tryStart;
+  </script>
+</body>
+
+</html>
